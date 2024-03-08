@@ -1,0 +1,8 @@
+.ipynb_checkpoints/
+__pycache__/
+EVE/__pycache__/
+utils/__pycache__/
+EVE/logs/*
+!EVE/logs/.gitkeep
+results/correlations/PABP*
+*.Identifier
