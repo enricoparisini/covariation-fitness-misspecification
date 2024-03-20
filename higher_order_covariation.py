@@ -180,7 +180,7 @@ def compute_r20s(list_models, order, out_file_name,
             all_r_20_fns[i_indices] = compute_r_ns(list_fs, ref_model_index = ref_model_index)[0]
         except:
             continue
-    np.save(comparisons_location + os.sep + out_file_name + "all_r20s.npy", all_r_20_fns) 
+    np.save(comparisons_location + os.sep + out_file_name + "_all_r20s.npy", all_r_20_fns) 
     final_rs = compute_final_rs(all_r_20_fns, print_Q=False)
     np.save(comparisons_location + os.sep + out_file_name + ".npy", final_rs) 
     print(f"Average r_20s:\n{final_rs[0]}")
