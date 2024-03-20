@@ -17,7 +17,7 @@ from EVE import VAE_model
 #Auxiliary functions to find site-wise thresholds given a decoded sample from EVE:
 def _compute_weight_gap(seq,list_seq, theta):
     number_non_empty_positions = torch.dot(seq,seq)
-    if number_non_empty_positions>0:
+    if number_non_empty_positions>0.:
         denom = torch.matmul(list_seq,seq) / number_non_empty_positions 
         denom = torch.sum(denom > 1 - theta) 
         return 1/denom
@@ -26,12 +26,10 @@ def _compute_weight_gap(seq,list_seq, theta):
 
 
 def _compute_1hot(list_recon_x_subsample,thresholds):
-    list_recon_x_subsample_max_values, list_recon_x_subsample_max_indices = torch.max(list_recon_x_subsample,
-                                                                                      dim=2, keepdim=True)
-    list_recon_x_subsample_max_1 = torch.greater(list_recon_x_subsample_max_values,thresholds.view(-1,1))+0.
-    
+    list_recon_x_subsample_max_indices, list_recon_x_subsample_max_values = multisample_from_softmax_MSA(list_recon_x_subsample)
+    list_recon_x_subsample_max_1 = torch.greater(list_recon_x_subsample_max_values,thresholds) + 0.
     recon_x_subsample_1hot = torch.zeros_like(list_recon_x_subsample)
-    return recon_x_subsample_1hot.scatter_(2, list_recon_x_subsample_max_indices, list_recon_x_subsample_max_1)    
+    return recon_x_subsample_1hot.scatter_(2, list_recon_x_subsample_max_indices.unsqueeze(-1), list_recon_x_subsample_max_1.unsqueeze(-1))     
     
     
 def _compute_weights(recon_x_subsample_1hot,theta = 0.2):
@@ -56,8 +54,8 @@ def _fun(f1_gap_i_site,PABP_f1_gap_i_site):
 
 def compute_thresholds(list_recon_x_subsample, ref_f1_gap, 
                        _TOL_per_site = 0.01,
-                       n_rep_max = 10,
-                       safety_unbalance = 8,
+                       n_rep_max = 20,
+                       safety_unbalance = 1,
                        avg = False,
                        debug = True):   
     '''
@@ -81,7 +79,7 @@ def compute_thresholds(list_recon_x_subsample, ref_f1_gap,
         list_f1_gaps_0 = torch.tensor([],device=list_recon_x_subsample.device)
         list_f1_gaps_1 = torch.tensor([],device=list_recon_x_subsample.device)
     thresholds = torch.zeros(list_recon_x_subsample.shape[1]).to(list_recon_x_subsample.device) 
-    thresholds_0 = -0.1 * torch.ones(list_recon_x_subsample.shape[1]).to(list_recon_x_subsample.device)
+    thresholds_0 = 0. * torch.ones(list_recon_x_subsample.shape[1]).to(list_recon_x_subsample.device)
     thresholds_1 = 1.1 * torch.ones(list_recon_x_subsample.shape[1]).to(list_recon_x_subsample.device)
     n_rep = 1
 
@@ -136,6 +134,22 @@ def compute_thresholds(list_recon_x_subsample, ref_f1_gap,
     return thresholds
 
 
+def multisample_from_softmax_MSA(list_recon_x):
+    """
+    Sample from a list of sequences, where at each token a softmax probability is given 
+    over the alphabet letters.
+    res.shape: (torch.tensor) shaped (N, L, q).
+    Return torch.tensor shaped (N, L).
+    """
+    N = list_recon_x.shape[0]
+    size = list_recon_x.shape[1]
+    rand_values = torch.rand((N, size, 1), device=list_recon_x.device)
+    cumprobs = list_recon_x.cumsum(dim=2)
+    sampled = torch.searchsorted(cumprobs, rand_values).squeeze(2)
+    sampled_probs = torch.gather(list_recon_x, -1, sampled.unsqueeze(-1) ).squeeze(-1)
+    return sampled, sampled_probs
+
+
 def select_and_write_MSA(list_recon_x,
                          thresholds,
                          file_name,
@@ -151,10 +165,10 @@ def select_and_write_MSA(list_recon_x,
     - prefix: (string) prefix in the label of each generated sequence. It is then followed by the number of the sequence within the MSA.
     - focus_line: (string) label + '\n' + sequence for the focus sequence to be prepended to the generated MSA.
     '''
-    list_recon_x_max = torch.max(list_recon_x,dim=2)
-    list_recon_x_max_indices = torch.greater(list_recon_x_max.values,thresholds)*(list_recon_x_max.indices+1)
-    list_recon_x_max_indices_np = torch.Tensor.numpy(list_recon_x_max_indices.cpu())
-    list_recon_x_letters = np.array(list(alphabetg))[list_recon_x_max_indices_np]
+    list_recon_x_sampled, list_recon_x_sampled_probs = multisample_from_softmax_MSA(list_recon_x)
+    list_recon_x_sampled_indices = torch.greater(list_recon_x_sampled_probs,thresholds)*(list_recon_x_sampled+1)
+    list_recon_x_sampled_indices_np = torch.Tensor.numpy(list_recon_x_sampled_indices.cpu())
+    list_recon_x_letters = np.array(list(alphabetg))[list_recon_x_sampled_indices_np]
     list_recon_x_sequences = list_recon_x_letters.view('U' + str(list_recon_x_letters.shape[1])).ravel()
     with open(file_name, 'w') as file:
         if focus_line is not None:
@@ -265,7 +279,6 @@ def generate_MSA_and_Correlations_from_EVE_model(ref_weights_file_name,
         standard_out_old = sys.stdout
         f = open('/dev/null', 'w')
         sys.stdout = f
-    in_correlations_subfolder = correlations_folder + os.sep + ref_Correlations_name + os.sep
     ref_Correlations = load_instance_from_file(correlations_folder + os.sep + ref_Correlations_name 
                                        + os.sep + ref_Correlations_name + ".Correlations")
 
@@ -284,7 +297,7 @@ def generate_MSA_and_Correlations_from_EVE_model(ref_weights_file_name,
     for ii in range(N_samples):
         list_z_sampled[ii] = model.sample_latent_prior()
     with torch.no_grad():
-        list_recon_x = torch.sigmoid(model.decoder(list_z_sampled))
+        list_recon_x = torch.nn.functional.softmax(model.decoder(list_z_sampled), dim=2)
     
     if threshold is None:
         ref_f1_gap = torch.tensor(ref_Correlations.f1[:,0]).to(model.device)
@@ -304,6 +317,10 @@ def generate_MSA_and_Correlations_from_EVE_model(ref_weights_file_name,
         max_deviation = torch.max(f1_gaps_end - ref_f1_gap)
         print(f"Average deviation per site: {avg_deviation.item():.4f}, \nMax deviation per site: {max_deviation.item():.4f}")
     else:
+        if threshold == -1:
+            print(f"Obtaining gap threshold as {len(    alphabet)}-th percentile from decoded MSA.") #print(f"Obtaining gap threshold as {len(ref_Correlations.alphabet)}-th percentile from decoded MSA.")
+            index = int( list_recon_x.shape[0]*list_recon_x.shape[1])
+            threshold = torch.sort(list_recon_x.view(-1), descending=True).values[index].cpu().item()
         print(f"Using gap threshold {threshold}.")
         thresholds = threshold*torch.ones(list_recon_x.shape[1]).to(model.device) 
     print("Generation completed.")
