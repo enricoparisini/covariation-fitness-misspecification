@@ -75,7 +75,8 @@ def visualise_performance_double(performance_filename, performance_filename_2):
 
 
 def visualise_performance_train_test_1column(performance_filename, performance_filename_2, reduced_index, 
-                                             filename_out = None, title = None, x_title = None):
+                                             filename_out = None, title = None, x_title = None,
+                                             training_vs_test = None):
     '''
     Plot helper function that plots (on one column) the performance of two models (or one model vs two different sets, 
     e.g. training and test sets) at different stages of training wrt different metrics. The plot can be saved to file.
@@ -87,8 +88,8 @@ def visualise_performance_train_test_1column(performance_filename, performance_f
     - title: (string) title of the figure.
     - x_title: (float) defines the horizontal position of the title. None corresponds to a centered title.
     '''
-    N_effs, pearson_rs, spearman_rs, labels = extract_performance(performance_filename)
-    N_effs_2, pearson_rs_2, spearman_rs_2, _ = extract_performance(performance_filename_2)
+    N_effs, pearson_rs, spearman_rs, _ = extract_performance(performance_filename)
+    _, pearson_rs_2, spearman_rs_2, _ = extract_performance(performance_filename_2)
     n_y = 1
     n_x = len(reduced_index)+1
     scaling = 20
@@ -99,10 +100,14 @@ def visualise_performance_train_test_1column(performance_filename, performance_f
         if i_plot==0:
             row.plot(N_effs[0], N_effs[1])
             row.set_title("N_eff")
-            row.set_ylim(ymin=0)
+            row.set_ylim(ymin=0, ymax=1.05*np.max(N_effs[1]))
         else:
             row.plot(pearson_rs[0], pearson_rs[i_plot])
             row.plot(pearson_rs_2[0], pearson_rs_2[i_plot])
+            if training_vs_test is not None:
+                x = np.array([np.min(pearson_rs[0]), np.max(pearson_rs[0])])
+                y = np.array([training_vs_test[i_plot-1], training_vs_test[i_plot-1]])
+                row.plot(x, y, color='black', linestyle='dashed')
             row.set_title("r_" + reduced_index[i_plot-1])            
         i_plot+=1
     if title is not None:
