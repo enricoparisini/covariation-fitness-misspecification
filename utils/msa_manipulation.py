@@ -79,6 +79,19 @@ def convert_MSA_Mi3_generated_to_EVE(input_MSA_filename, output_MSA_filename, fo
             output_file.write(prefix + str(i_label) + '\n' + line + '\n')
 
 
+def avg_hamming_distance_to_focus_seq(label_to_seq):
+    ''' 
+    Return the Hamming distances of the sequences in a MSA in dictionary label_to_seq format
+    from the focus sequence, and their average.
+    '''
+    model = Correlations(label_to_seq = label_to_seq)
+    model._OHE_MSA()
+    focus_seq = model.label_to_OHE[0]
+    hamming_distances = model.L - np.sum([ np.multiply(focus_seq, seq) for seq in iter(model.label_to_OHE[1:])], axis = (1,2))
+    avg = np.mean(hamming_distances)
+    return hamming_distances, avg
+
+
 def find_furthest_sequences(label_to_seq_whole, label_to_seq_subset, output_MSA_filename, N_out = 10000,
                             keep_focus_seq_whole = True):
     '''
